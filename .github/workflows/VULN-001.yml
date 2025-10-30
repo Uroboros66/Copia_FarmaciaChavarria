@@ -16,15 +16,26 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Build and run API
+      - name: Build API
+        run: dotnet build Copia_FarmaciaChavarria/API_FarmaciaChavarria/API_FarmaciaChavarria.csproj
+
+      - name: Run API (HTTP mode)
         run: |
-          dotnet build Copia_FarmaciaChavarria/API_FarmaciaChavarria/API_FarmaciaChavarria.csproj
-          dotnet run --project Copia_FarmaciaChavarria/API_FarmaciaChavarria/API_FarmaciaChavarria.csproj --urls "https://0.0.0.0:7053" &
+          dotnet run --project Copia_FarmaciaChavarria/API_FarmaciaChavarria/API_FarmaciaChavarria.csproj --urls "http://0.0.0.0:5006" &
         env:
           ASPNETCORE_ENVIRONMENT: Development
 
       - name: Wait for API to start
-        run: sleep 20
+        run: |
+          echo "Esperando que la API inicie..."
+          for i in {1..20}; do
+            if curl -s http://127.0.0.1:7053/swagger/index.html >/dev/null; then
+              echo "✅ API lista"
+              break
+            fi
+            echo "⏳ Esperando... intento $i"
+            sleep 5
+          done
 
       - name: Create report directory
         run: mkdir -p zap_reports && chmod -R 777 zap_reports
