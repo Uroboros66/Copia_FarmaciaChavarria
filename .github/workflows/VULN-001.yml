@@ -6,16 +6,37 @@ on:
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
+
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build and run API
+        run: |
+          dotnet build Copia_FarmaciaChavarria/API_FarmaciaChavarria/API_FarmaciaChavarria.csproj
+          dotnet run --project Copia_FarmaciaChavarria/API_FarmaciaChavarria/API_FarmaciaChavarria.csproj --urls "http://0.0.0.0:5006" &
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+
+      - name: Wait for API to start
+        run: sleep 20
+
+      - name: Create report directory
+        run: mkdir -p zap_reports && chmod -R 777 zap_reports
+
       - name: OWASP ZAP Baseline Scan - Security Headers
         uses: zaproxy/action-baseline@v0.10.0
         with:
-          target: 'https://localhost:7053'
-          rules_file_name: '.zap/rules.tsv'
-          cmd_options: '-a'
-      - name: Upload report
+          target: 'http://127.0.0.1:5006'
+          cmd_options: '-a -r zap_reports/report.html'
+
+      - name: Upload ZAP report
         uses: actions/upload-artifact@v4
         with:
           name: ZAP-Security-Headers
-          path: zap_report.html
-
+          path: zap_reports/report.html
