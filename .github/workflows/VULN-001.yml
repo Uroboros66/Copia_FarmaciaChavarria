@@ -1,10 +1,10 @@
-name: VULN-001 - Security Headers (HTTPS :7053)
+name: VULN-001 - Security Headers Scan (HTTPS 7053, no Docker)
 
 on:
   workflow_dispatch:
 
 jobs:
-  zap_scan_https:
+  zap_scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,47 +18,36 @@ jobs:
       - name: Build API
         run: dotnet build Copia_FarmaciaChavarria/API_FarmaciaChavarria/API_FarmaciaChavarria.csproj
 
-      - name: Create self-signed cert (PFX)
+      - name: Create self-signed cert
         run: |
-          # Genera key + cert y lo exporta a PFX (con password simple)
           openssl req -x509 -newkey rsa:4096 -nodes -sha256 -days 365 \
             -subj "/CN=localhost" \
             -keyout key.pem -out cert.pem
           openssl pkcs12 -export -out cert.pfx -inkey key.pem -in cert.pem -passout pass:MyPfxPass123
-          ls -l cert.pfx
 
-      - name: Run API on HTTPS :7053
+      - name: Run API (HTTPS :7053)
         env:
           ASPNETCORE_ENVIRONMENT: Development
           ASPNETCORE_Kestrel__Certificates__Default__Path: ${{ github.workspace }}/cert.pfx
           ASPNETCORE_Kestrel__Certificates__Default__Password: MyPfxPass123
         run: |
-          # Ejecuta la API en background escuchando en 0.0.0.0:7053 (HTTPS)
           dotnet run --project Copia_FarmaciaChavarria/API_FarmaciaChavarria/API_FarmaciaChavarria.csproj --urls "https://0.0.0.0:7053" &
+          sleep 15
+          curl -k https://127.0.0.1:7053/swagger/index.html || true
 
-      - name: Wait for HTTPS endpoint
+      - name: Install OWASP ZAP
         run: |
-          echo "Comprobando https://127.0.0.1:7053/swagger/index.html ..."
-          for i in {1..24}; do
-            if curl -k -s -f https://127.0.0.1:7053/swagger/index.html >/dev/null; then
-              echo "✅ API HTTPS lista"
-              break
-            fi
-            echo "⏳ Esperando... intento $i"
-            sleep 5
-          done
+          sudo apt-get update
+          sudo apt-get install -y zaproxy
+          zap.sh -version
 
-      - name: Prepare report dir
-        run: mkdir -p zap_reports && chmod -R 777 zap_reports
+      - name: Run ZAP Baseline Scan
+        run: |
+          mkdir -p zap_reports
+          zap-baseline.py -t https://127.0.0.1:7053 -r zap_reports/report.html -J zap_reports/report.json -a --ignore-ssl-errors true
 
-      - name: OWASP ZAP Baseline Scan (HTTPS)
-        uses: zaproxy/action-baseline@v0.10.0
-        with:
-          target: 'https://127.0.0.1:7053'
-          cmd_options: '--ignore-ssl-errors true -a -r zap_reports/report.html'
-
-      - name: Upload ZAP report
+      - name: Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: ZAP-Security-Headers-HTTPS-7053
+          name: ZAP-Security-Headers-7053
           path: zap_reports/report.html
