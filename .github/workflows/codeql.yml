@@ -1,0 +1,119 @@
+﻿name: "CodeQL and SonarCloud Analysis"
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  analyze:
+    name: "CodeQL - C#"
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          queries: security-and-quality
+
+      - name: Restore and Build .NET
+        run: |
+          dotnet restore
+          dotnet build --configuration Release --no-restore
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "codeql-sast"
+          output: ./codeql-results
+
+      # 📦 Subir los resultados del análisis como artefacto
+      - name: Upload CodeQL Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-results
+          path: ./codeql-results
+
+      # 🚨 Umbral de falla por vulnerabilidades críticas
+      - name: Fail if critical vulnerabilities found
+        if: always()
+        run: |
+          if grep -q '"severity": "critical"' ./codeql-results/**/*.sarif; then
+            echo "Critical vulnerabilities found in CodeQL results."
+            exit 1
+          else
+            echo "No critical vulnerabilities found."
+          fi
+
+  analyze-sonar:
+    name: "SonarCloud - C#"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Install SonarScanner for .NET
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: Add dotnet tools to PATH
+        run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Run SonarCloud Analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          dotnet sonarscanner begin \
+            /k:"${{ secrets.SONAR_PROJECT_KEY }}" \
+            /o:"${{ secrets.SONAR_ORG }}" \
+            /d:sonar.login="${{ secrets.SONAR_TOKEN }}" \
+            /d:sonar.host.url="https://sonarcloud.io"
+
+          dotnet build --configuration Release
+
+          dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
+
+      # 📦 Subir resumen del análisis SonarCloud como artefacto
+      - name: Upload Sonar Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-report
+          path: ./.sonarqube/out/.sonar/report-task.txt
+
+      # 🚨 Umbral de falla según Quality Gate de SonarCloud
+      - name: Check SonarCloud Quality Gate
+        if: always()
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          echo "⏳ Checking SonarCloud Quality Gate status..."
+          PROJECT_KEY="${{ secrets.SONAR_PROJECT_KEY }}"
+          STATUS=$(curl -s -u $SONAR_TOKEN: "https://sonarcloud.io/api/qualitygates/project_status?projectKey=$PROJECT_KEY" | jq -r '.projectStatus.status')
+
+          if [ "$STATUS" != "OK" ]; then
+            echo "❌ SonarCloud Quality Gate failed: $STATUS"
+            exit 1
+          else
+            echo "SonarCloud Quality Gate passed."
+          fi

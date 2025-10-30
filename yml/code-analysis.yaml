@@ -1,0 +1,155 @@
+﻿name: "Análisis Estático de Código .NET"
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  codeql-analysis:
+    name: "CodeQL - Análisis de Seguridad C#"
+    runs-on: self-hosted  
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    
+    steps:
+    - name: "Checkout del código"
+      uses: actions/checkout@v4
+      
+    - name: "Setup .NET"
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: | 
+          8.x
+          7.x
+          6.x
+          
+    - name: "Inicializar CodeQL"
+      uses: github/codeql-action/init@v3
+      with:
+        languages: 'csharp'
+        queries: security-extended,security-and-quality
+        build-mode: manual  # Para .NET necesitamos build manual
+        
+    - name: "🏗️ Restaurar dependencias .NET"
+      run: |
+        # Restaurar paquetes NuGet para permitir análisis preciso
+        dotnet restore --verbosity minimal
+        dotnet build --no-restore --configuration Release
+      
+    - name: "Ejecutar Análisis CodeQL"
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:csharp"
+
+  security-scan-dotnet:
+    name: "Security Code Scan - Análisis C#"
+    runs-on: self-hosted
+    
+    steps:
+    - name: "Checkout del código"
+      uses: actions/checkout@v4
+      
+    - name: "Setup .NET"
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.x'
+        
+    - name: "Instalar Security Code Scan NuGet"
+      run: |
+        # Agregar el paquete NuGet de Security Code Scan a cada proyecto
+        Get-ChildItem -Recurse -Filter "*.csproj" | ForEach-Object {
+        dotnet add $_.FullName package AdaskoTheBeAsT.SecurityCodeScan.VS2022 --version 5.6.7.34
+        }
+
+    - name: "🛡️ Ejecutar Security Code Scan"
+      run: |
+        # Build de los proyectos con Security Code Scan habilitado
+        Get-ChildItem -Recurse -Filter "*.csproj" | ForEach-Object {
+        Write-Host "Analizando proyecto: $($_.Name)"
+        dotnet build $_.FullName --verbosity minimal /p:SecurityCodeScanEnabled=true
+        }
+        
+    - name: "📊 Reporte de Vulnerabilidades C#"
+      run: |
+        echo "## 🛡️ Análisis de Seguridad .NET" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Proyectos Analizados:" >> $GITHUB_STEP_SUMMARY
+        Get-ChildItem -Recurse -Filter "*.csproj" | ForEach-Object {
+          echo "- $($_.Name)" >> $GITHUB_STEP_SUMMARY
+        }
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Herramientas utilizadas:**" >> $GITHUB_STEP_SUMMARY
+        echo "- GitHub CodeQL para C#" >> $GITHUB_STEP_SUMMARY
+        echo "- Security Code Scan" >> $GITHUB_STEP_SUMMARY
+
+  roslyn-analyzers:
+    name: "Analizadores Roslyn - Calidad Código"
+    runs-on: self-hosted
+    
+    steps:
+    - name: "📥 Checkout del código"
+      uses: actions/checkout@v4
+      
+    - name: "🛠️ Setup .NET"
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.x'
+        
+    - name: "🔧 Ejecutar Analizadores Roslyn"
+      run: |
+        # Build con todos los warnings tratados como errores
+        dotnet build --configuration Release --verbosity normal /warnaserror
+        
+    - name: "📝 Ejecutar Análisis de Código"
+      run: |
+        # Análisis estático usando dotnet format
+        dotnet format --verify-no-changes --severity info
+        
+    - name: "💾 Guardar Reporte de Análisis"
+      uses: actions/upload-artifact@v4
+      with:
+        name: roslyn-analysis-results
+        path: bin/Release/
+        retention-days: 7
+
+  dotnet-specific-checks:
+    name: "Chequeos Específicos .NET"
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: "Checkout del código"
+      uses: actions/checkout@v4
+      
+    - name: "Setup .NET"
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.x'
+        
+    - name: "🔎 Buscar Patrones Peligrosos C#"
+      run: |
+        # Script PowerShell para buscar patrones comunes de vulnerabilidades en C#
+        $patterns = @{
+          "SqlCommand con concatenación" = 'SqlCommand.*\+'
+          "Command Injection" = 'Process\.Start.*\+'
+          "Path Injection" = 'Path\.Combine.*\+'
+          "Deserialización insegura" = 'BinaryFormatter|SoapFormatter'
+          "Contraseñas hardcodeadas" = 'password.*=.*".*"'
+        }
+        
+        echo "## 🔍 Patrones de Seguridad Encontrados" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        foreach ($pattern in $patterns.GetEnumerator()) {
+          $results = Select-String -Path "*.cs" -Pattern $pattern.Value
+          if ($results) {
+            echo "### $($pattern.Key):" >> $GITHUB_STEP_SUMMARY
+            foreach ($result in $results) {
+              echo "- $($result.Filename):$($result.LineNumber) - $($result.Line.Trim())" >> $GITHUB_STEP_SUMMARY
+            }
+            echo "" >> $GITHUB_STEP_SUMMARY
+          }
+        }

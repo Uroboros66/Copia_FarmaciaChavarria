@@ -1,0 +1,153 @@
+﻿name: "Análisis de Dependencias .NET"
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: '0 2 * * 1'# Ejecución semanal
+jobs:
+  nuget-audit:
+    name: "Auditoría NuGet - Vulnerabilidades"
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: "📥 Checkout del código"
+      uses: actions/checkout@v4
+
+    - name: "🛠️ Setup .NET"
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.x'
+
+    - name: "📦 Restaurar dependencias"
+      run: dotnet restore
+
+
+    - name: "🔍 Ejecutar Auditoría NuGet"
+      run: |
+        # Comando nativo de .NET para auditar dependencias (disponible en .NET 8+)
+        dotnet list package --vulnerable --include-transitive
+
+    - name: "📋 Generar Reporte de Dependencias"
+      run: |
+        # Generar reporte detallado de todas las dependencias
+        dotnet list package --include-transitive > dependency-report.txt
+
+        echo "## 📋 Reporte de Dependencias .NET" >> $env:GITHUB_STEP_SUMMARY
+        Get-Content dependency-report.txt | ForEach-Object {
+        echo "$_" >> $env:GITHUB_STEP_SUMMARY
+        }
+
+  owasp-dotnet-check:
+    name: "OWASP Dependency Check .NET"
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: "📥 Checkout del código"
+      uses: actions/checkout@v4
+
+    - name: "🛡️ OWASP Dependency Check para .NET"
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'dotnet-project'
+        path: '.'
+        format: 'HTML'
+        args: >
+          --failOnCVSS 7
+          --scan **/*.csproj
+          --out reports/owasp-dotnet
+      env:
+        JAVA_HOME: /opt/jdk
+
+
+    - name: "📊 Resumen OWASP .NET"
+      run: |
+        echo "## 🛡️ OWASP Dependency Check .NET" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Paquetes NuGet analizados:**" >> $GITHUB_STEP_SUMMARY
+        find . -name "*.csproj" | while read file; do
+        echo "- $(basename "$file")" >> $GITHUB_STEP_SUMMARY
+        done
+      shell: bash
+
+
+  trivy-dotnet-scan:
+    name: "Trivy - Escaneo .NET"
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: "📥 Checkout del código"
+      uses: actions/checkout@v4
+
+    - name: "🐳 Ejecutar Trivy para .NET"
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-dotnet-results.sarif'
+        scanners: 'vuln,secret,config'
+
+    - name: "📤 Subir resultados Trivy"
+      uses: actions/upload-artifact@v4
+      with:
+        name: trivy-dotnet-results
+        path: trivy-dotnet-results.sarif
+
+  dotnet-sbom:
+    name: "Generar SBOM .NET"
+    runs-on: self-hosted
+
+    steps:
+    - name: "📥 Checkout del código"
+      uses: actions/checkout@v4
+
+    - name: "🛠️ Setup .NET"
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.x'
+
+    - name: "📋 Generar SBOM con .NET"
+      run: |
+        # Generar Software Bill of Materials usando herramientas .NET
+        dotnet restore --force
+        # Crear archivo de inventario de paquetes
+        Get-ChildItem -Recurse -Filter "*.csproj" | ForEach-Object {
+          $projectName = $_.BaseName
+          dotnet list $_.FullName package --format json > "sbom-$projectName.json"
+        }
+
+    - name: "💾 Guardar SBOM .NET"
+      uses: actions/upload-artifact@v4
+      with:
+        name: dotnet-sbom-files
+        path: sbom-*.json
+        retention-days: 90
+
+  dotnet-deprecation-check:
+    name: "Verificar APIs Obsoletas .NET"
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: "📥 Checkout del código"
+      uses: actions/checkout@v4
+
+    - name: "🛠️ Setup .NET"
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.x'
+
+    - name: "⚠️ Verificar APIs Obsoletas"
+      run: |
+        # Build con análisis de APIs obsoletas
+        dotnet build --verbosity minimal -p:CheckForOverflowUnderflow=true -p:TreatWarningsAsErrors=true
+
+    - name: "📝 Reporte de Compatibilidad"
+      run: |
+        echo "## ⚠️ Análisis de Compatibilidad .NET" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Verificaciones realizadas:" >> $GITHUB_STEP_SUMMARY
+        echo "- APIs obsoletas" >> $GITHUB_STEP_SUMMARY
+        echo "- Overflow/Underflow checking" >> $GITHUB_STEP_SUMMARY
+        echo "- Compatibilidad entre versiones" >> $GITHUB_STEP_SUMMARY

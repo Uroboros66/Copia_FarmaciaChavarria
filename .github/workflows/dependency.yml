@@ -1,0 +1,58 @@
+name: ".NET Dependency Analysis"
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      # --- Dotnet Native Vulnerability Scan ---
+      - name: Audit dependencies (.NET native)
+        run: |
+          echo "### Vulnerable Packages" > dotnet-vulnerable.txt
+          dotnet list package --vulnerable --include-transitive >> dotnet-vulnerable.txt
+          cat dotnet-vulnerable.txt
+
+      # --- Subir reporte TXT de .NET ---
+      - name: Upload .NET Vulnerable Packages TXT
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-vulnerable
+          path: dotnet-vulnerable.txt
+
+      # --- Ejecutar OWASP Dependency-Check ---
+      - name: Ejecutar OWASP Dependency-Check en HTML
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'dotnet-project'
+          path: '.'
+          format: 'HTML'
+          args: '--scan . --failOnCVSS 7 --out .'
+
+      # --- Subir reporte OWASP como artifact ---
+      - name: Upload OWASP Dependency-Check HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owasp-report
+          path: '**/dependency-check-report.html'

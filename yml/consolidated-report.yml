@@ -1,0 +1,83 @@
+name: "Informe Consolidado de Análisis"
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-and-analyze:
+    name: "Construir y Analizar"
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      contents: read
+
+    steps:
+      - name: "📥 Checkout del código"
+        uses: actions/checkout@v4
+
+      - name: "🛠️ Configurar .NET"
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: "📦 Restaurar dependencias"
+        run: dotnet restore
+
+      - name: "🏗️ Construir proyecto"
+        run: dotnet build --configuration Release --no-restore
+
+      - name: "📝 Iniciar Resumen de GitHub"
+        run: echo "## 📋 Informe Consolidado de Análisis de Código y Dependencias" >> $GITHUB_STEP_SUMMARY
+
+      # --- Análisis de Dependencias ---
+      - name: "🔍 Ejecutar Auditoría NuGet y añadir al resumen"
+        run: |
+          echo "### 📦 Análisis de Dependencias (NuGet)" >> $GITHUB_STEP_SUMMARY
+          if dotnet list package --vulnerable --include-transitive | grep "Vulnerable"; then
+            echo "🚨 **Se encontraron paquetes vulnerables:**" >> $GITHUB_STEP_SUMMARY
+            dotnet list package --vulnerable --include-transitive >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No se encontraron vulnerabilidades en los paquetes NuGet." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # --- Análisis de Código Estático con CodeQL ---
+      - name: "🛡️ Inicializar CodeQL"
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          queries: security-and-quality
+
+      - name: "🔍 Realizar Análisis con CodeQL"
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "codeql-sast"
+
+      - name: "📊 Añadir Resumen de CodeQL"
+        run: |
+          echo "### 🛡️ Análisis de Seguridad de Código (CodeQL)" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Análisis de CodeQL completado. Los resultados detallados se pueden encontrar en la pestaña 'Security' del repositorio." >> $GITHUB_STEP_SUMMARY
+
+      # --- Análisis con SonarCloud ---
+      - name: "🔧 Instalar SonarScanner para .NET"
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: "PATH"
+        run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: "☁️ Ejecutar Análisis de SonarCloud y añadir al resumen"
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          dotnet sonarscanner begin \
+            /k:"${{ secrets.SONAR_PROJECT_KEY }}" \
+            /o:"${{ secrets.SONAR_ORG }}" \
+            /d:sonar.login="${{ secrets.SONAR_TOKEN }}" \
+            /d:sonar.host.url="https://sonarcloud.io"
+          dotnet build --configuration Release
+          dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
+          echo "### ☁️ Análisis de Calidad de Código (SonarCloud)" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Análisis de SonarCloud completado. Revisa el Quality Gate en [tu panel de SonarCloud](https://sonarcloud.io/dashboard?id=${{ secrets.SONAR_PROJECT_KEY }})." >> $GITHUB_STEP_SUMMARY
