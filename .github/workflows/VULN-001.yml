@@ -26,8 +26,9 @@ jobs:
       # Descargar ZAP Standalone
       - name: Download ZAP
         run: |
-          wget https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2_14_0_Linux.tar.gz
-          tar -xvzf ZAP_2_14_0_Linux.tar.gz
+         wget https://github.com/zaproxy/zaproxy/releases/download/v2.16.1/ZAP_2.16.1_Linux.tar.gz
+          tar -xvzf ZAP_2.16.1_Linux.tar.gz
+
 
       # Ejecutar ZAP Baseline Scan
       - name: Run ZAP Baseline Scan
