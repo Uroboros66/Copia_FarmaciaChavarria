@@ -9,41 +9,30 @@ jobs:
 
     steps:
       # 1️⃣ Clonar el repositorio
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       # 2️⃣ Configurar .NET
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+      - uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
-      # 3️⃣ Restaurar dependencias
-      - name: Restore dependencies
-        run: dotnet restore
+      # 3️⃣ Compilar la aplicación
+      - run: dotnet build
 
-      # 4️⃣ Compilar la aplicación
-      - name: Build application
-        run: dotnet build --no-restore
-
-      # 5️⃣ Ejecutar la API localmente
-      - name: Run API in background
-        run: |
-          dotnet run --urls=http://0.0.0.0:5006 &
+      # 4️⃣ Ejecutar la API en background
+      - run: |
+          dotnet run --urls=http://localhost:5006 &
           echo "Esperando a que la API arranque..."
-          sleep 15
+          sleep 10
 
-      # 6️⃣ Escaneo de seguridad con OWASP ZAP usando host.docker.internal
-      - name: OWASP ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.10.0
+      # 5️⃣ Escaneo de seguridad con OWASP ZAP
+      - uses: zaproxy/action-baseline@v0.10.0
         with:
-          target: 'http://host.docker.internal:5006/swagger/index.html'
-          rules_file_name: '.zap/rules.tsv'
+          target: 'http://localhost:5006/swagger/index.html'
           cmd_options: '-a'
 
-      # 7️⃣ Subir el reporte como artefacto
-      - name: Upload ZAP report
-        uses: actions/upload-artifact@v4
+      # 6️⃣ Subir reporte como artefacto
+      - uses: actions/upload-artifact@v4
         with:
-          name: ZAP-Security-Headers
+          name: ZAP-Report-VULN-001
           path: report.html
