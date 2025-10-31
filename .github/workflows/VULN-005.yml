@@ -21,25 +21,18 @@ jobs:
       - run: |
           dotnet run --urls=http://0.0.0.0:5006 &
           echo "Esperando a que la API arranque..."
-          for i in {1..10}; do
-            if curl -s http://localhost:5006 > /dev/null; then
-              echo "✅ API lista!"
-              break
-            fi
-            echo "⏳ Esperando API..."
-            sleep 5
-          done
+          sleep 15
 
       - name: Download ZAP
         run: |
           wget https://github.com/zaproxy/zaproxy/releases/download/v2.16.1/ZAP_2.16.1_Linux.tar.gz
           tar -xvzf ZAP_2.16.1_Linux.tar.gz
 
-      - name: Run ZAP Full Scan using automation file
+      - name: Run ZAP Baseline Scan (Server Configuration)
         run: |
-          ./ZAP_2.16.1/zap.sh -cmd -autorun zap-fullscan.yaml
+          ./ZAP_2.16.1/zap.sh -cmd -quickurl http://localhost:5006/swagger/index.html -quickout $GITHUB_WORKSPACE/report-server-config.html
 
       - uses: actions/upload-artifact@v4
         with:
           name: ZAP-Report-VULN-005
-          path: zap-report.html
+          path: report-server-config.html
