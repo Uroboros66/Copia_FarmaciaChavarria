@@ -6,15 +6,45 @@ on:
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
+
     steps:
+      # 1️⃣ Clonar el repositorio
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2️⃣ Configurar .NET
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      # 3️⃣ Restaurar dependencias
+      - name: Restore dependencies
+        run: dotnet restore
+
+      # 4️⃣ Compilar la aplicación
+      - name: Build application
+        run: dotnet build --no-restore
+
+      # 5️⃣ Ejecutar la API en background en HTTP
+      - name: Run API in background
+        run: |
+          dotnet run --urls=http://localhost:5006 &
+          echo "Esperando a que la API esté lista..."
+          sleep 15  # Ajusta si tu app tarda más en arrancar
+
+      # 6️⃣ Escaneo de seguridad con OWASP ZAP
       - name: OWASP ZAP Baseline Scan - Security Headers
         uses: zaproxy/action-baseline@v0.10.0
         with:
-          target: 'https://localhost:7053/swagger/index.html'
+          target: 'http://localhost:5006/swagger/index.html'
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a'
-      - name: Upload report
+          report_format: 'html'
+
+      # 7️⃣ Subir el reporte como artefacto
+      - name: Upload ZAP report
         uses: actions/upload-artifact@v4
         with:
           name: ZAP-Security-Headers
-          path: zap_report.html
+          path: report.html
