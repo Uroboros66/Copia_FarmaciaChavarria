@@ -23,10 +23,10 @@ jobs:
           echo "Esperando a que la API arranque..."
           for i in {1..10}; do
             if curl -s http://localhost:5006 > /dev/null; then
-              echo "API lista!"
+              echo "✅ API lista!"
               break
             fi
-            echo "Esperando API..."
+            echo "⏳ Esperando API..."
             sleep 5
           done
 
@@ -35,11 +35,11 @@ jobs:
           wget https://github.com/zaproxy/zaproxy/releases/download/v2.16.1/ZAP_2.16.1_Linux.tar.gz
           tar -xvzf ZAP_2.16.1_Linux.tar.gz
 
-      - name: Run ZAP Full Scan (Server Configuration)
+      - name: Run ZAP Full Scan using automation file
         run: |
-          ./ZAP_2.16.1/zap.sh -cmd -quickurl http://localhost:5006/ -quickscan -quickout $GITHUB_WORKSPACE/report-server-config.html
+          ./ZAP_2.16.1/zap.sh -cmd -autorun zap-fullscan.yaml
 
       - uses: actions/upload-artifact@v4
         with:
           name: ZAP-Report-VULN-005
-          path: report-server-config.html
+          path: zap-report.html
