@@ -1,4 +1,4 @@
-name: VULN-001 - Security Headers Scan
+name: VULN-001 - Security Headers Scan with ngrok
 
 on:
   workflow_dispatch:
@@ -26,23 +26,37 @@ jobs:
       - name: Build application
         run: dotnet build --no-restore
 
-      # 5️⃣ Ejecutar la API en background en HTTP
+      # 5️⃣ Ejecutar la API localmente
       - name: Run API in background
         run: |
           dotnet run --urls=http://localhost:5006 &
-          echo "Esperando a que la API esté lista..."
-          sleep 15  # Ajusta si tu app tarda más en arrancar
+          echo "Esperando a que la API arranque..."
+          sleep 15
 
-      # 6️⃣ Escaneo de seguridad con OWASP ZAP
-      - name: OWASP ZAP Baseline Scan - Security Headers
+      # 6️⃣ Instalar ngrok
+      - name: Install ngrok
+        run: |
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install ngrok -y
+
+      # 7️⃣ Exponer la API usando ngrok
+      - name: Start ngrok tunnel
+        run: |
+          ngrok http 5006 --log=stdout > ngrok.log &
+          sleep 5
+          NGROK_URL=$(curl --silent http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+          echo "NGROK_URL=$NGROK_URL" >> $GITHUB_ENV
+
+      # 8️⃣ Escaneo de seguridad con OWASP ZAP
+      - name: OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.10.0
         with:
-          target: 'http://localhost:5006/swagger/index.html'
+          target: ${{ env.NGROK_URL }}/swagger/index.html
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a'
-          report_format: 'html'
 
-      # 7️⃣ Subir el reporte como artefacto
+      # 9️⃣ Subir el reporte como artefacto
       - name: Upload ZAP report
         uses: actions/upload-artifact@v4
         with:
