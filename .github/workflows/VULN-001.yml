@@ -1,4 +1,4 @@
-name: VULN-001 - Security Headers Scan (ZAP CLI)
+name: VULN-001 - Security Headers Scan
 
 on:
   workflow_dispatch:
@@ -8,36 +8,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Clonar el repositorio
       - uses: actions/checkout@v3
 
-      # 2️⃣ Configurar .NET
       - uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
-      # 3️⃣ Restaurar y compilar la app
       - run: |
           dotnet restore
           dotnet build
 
-      # 4️⃣ Ejecutar la API en background
       - run: |
-          dotnet run --urls=http://localhost:5006 &
+          dotnet run --urls=http://0.0.0.0:5006 &
           echo "Esperando a que la API arranque..."
           sleep 15
 
-      # 5️⃣ Instalar OWASP ZAP usando snap
-      - name: Install OWASP ZAP
+      # Descargar ZAP Standalone
+      - name: Download ZAP
         run: |
-          sudo snap install zaproxy --classic
+          wget https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2_14_0_Linux.tar.gz
+          tar -xvzf ZAP_2_14_0_Linux.tar.gz
 
-      # 6️⃣ Ejecutar escaneo de cabeceras de seguridad
+      # Ejecutar ZAP Baseline Scan
       - name: Run ZAP Baseline Scan
         run: |
-          zap-baseline.py -t http://localhost:5006/swagger/index.html -r report.html -a
+          ./ZAP_2.14.0/zap.sh -cmd -quickurl http://localhost:5006/swagger/index.html -quickout report.html
 
-      # 7️⃣ Subir reporte como artefacto
       - uses: actions/upload-artifact@v4
         with:
           name: ZAP-Report-VULN-001
