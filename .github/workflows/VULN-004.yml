@@ -1,1 +1,39 @@
+name: VULN-004 - Error Handling Scan
+
+on:
+  workflow_dispatch:
+
+jobs:
+  zap_scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - run: |
+          dotnet restore
+          dotnet build
+
+      - run: |
+          dotnet run --urls=http://0.0.0.0:5006 &
+          echo "Esperando a que la API arranque..."
+          sleep 15
+
+      - name: Download ZAP
+        run: |
+          wget https://github.com/zaproxy/zaproxy/releases/download/v2.16.1/ZAP_2.16.1_Linux.tar.gz
+          tar -xvzf ZAP_2.16.1_Linux.tar.gz
+
+      - name: Run ZAP Full Scan (Error Handling)
+        run: |
+          ./ZAP_2.16.1/zap.sh -cmd -quickurl http://localhost:5006/api/facturas -quickout $GITHUB_WORKSPACE/report-error.html -quickprogress
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZAP-Report-VULN-004
+          path: report-error.html
 
