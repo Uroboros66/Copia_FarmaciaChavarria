@@ -1,4 +1,4 @@
-name: VULN-001 - Security Headers Scan (CLI)
+name: VULN-001 - Security Headers Scan (ZAP CLI)
 
 on:
   workflow_dispatch:
@@ -27,11 +27,10 @@ jobs:
           echo "Esperando a que la API arranque..."
           sleep 15
 
-      # 5️⃣ Instalar OWASP ZAP CLI
-      - name: Install ZAP CLI
+      # 5️⃣ Instalar OWASP ZAP usando snap
+      - name: Install OWASP ZAP
         run: |
-          sudo apt update
-          sudo apt install -y zaproxy
+          sudo snap install zaproxy --classic
 
       # 6️⃣ Ejecutar escaneo de cabeceras de seguridad
       - name: Run ZAP Baseline Scan
