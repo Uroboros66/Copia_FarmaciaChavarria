@@ -8,30 +8,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Clonar el repositorio
       - uses: actions/checkout@v3
 
-      # 2️⃣ Configurar .NET
       - uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
-      # 3️⃣ Compilar la aplicación
       - run: dotnet build
 
-      # 4️⃣ Ejecutar la API en background
       - run: |
-          dotnet run --urls=http://localhost:5006 &
+          dotnet run --urls=http://0.0.0.0:5006 &
           echo "Esperando a que la API arranque..."
-          sleep 10
+          sleep 15
 
-      # 5️⃣ Escaneo de seguridad con OWASP ZAP
+      # Crear carpeta .zap para evitar errores de permisos
+      - run: mkdir -p .zap && chmod 777 .zap
+
       - uses: zaproxy/action-baseline@v0.10.0
         with:
-          target: 'http://localhost:5006/swagger/index.html'
+          target: 'http://host.docker.internal:5006/swagger/index.html'
           cmd_options: '-a'
 
-      # 6️⃣ Subir reporte como artefacto
       - uses: actions/upload-artifact@v4
         with:
           name: ZAP-Report-VULN-001
