@@ -1,1 +1,20 @@
+name: VULN-002 - Input Validation Scan
+
+on:
+  workflow_dispatch:
+
+jobs:
+  zap_scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: OWASP ZAP Full Scan - Input Validation
+        uses: zaproxy/action-full-scan@v0.9.0
+        with:
+          target: 'https://localhost:7053/api/usuarios/registrar'
+          cmd_options: '-z "-config scanner.attackOnStart=true -config scanner.maxRuleDurationInMins=5"'
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZAP-InputValidation
+          path: zap_report.html
 
