@@ -1,4 +1,4 @@
-name: VULN-002 - Input Validation Scan
+name: VULN-002 - Error Handling Exposure Scan
 
 on:
   workflow_dispatch:
@@ -28,11 +28,14 @@ jobs:
           wget https://github.com/zaproxy/zaproxy/releases/download/v2.16.1/ZAP_2.16.1_Linux.tar.gz
           tar -xvzf ZAP_2.16.1_Linux.tar.gz
 
-      - name: Run ZAP Full Scan (Input Validation)
+      - name: Run ZAP Baseline Scan (Error Handling)
         run: |
-          ./ZAP_2.16.1/zap.sh -cmd -quickurl http://localhost:5006/api/usuarios/registrar -quickout $GITHUB_WORKSPACE/report-input-validation.html -quickprogress
+          ./ZAP_2.16.1/zap.sh -cmd -quickurl http://localhost:5006/swagger/index.html \
+          -quickout $GITHUB_WORKSPACE/report-error-handling.html \
+          -config api.key=12345 \
+          -config spider.maxDuration=2
 
       - uses: actions/upload-artifact@v4
         with:
           name: ZAP-Report-VULN-002
-          path: report-input-validation.html
+          path: report-error-handling.html
