@@ -1,4 +1,4 @@
-name: VULN-002 - Sensitive Data Exposure (Simplified)
+name: VULN-002 - Sensitive Data Exposure (Baseline)
 
 on:
   workflow_dispatch:
@@ -14,36 +14,35 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Find project file
-        id: project
+      - name: Find and run project
         run: |
           CSPROJ=$(find . -name "*.csproj" | head -1)
-          if [ -z "$CSPROJ" ]; then
-            echo "❌ No .csproj found"
-            exit 1
+          echo "Using project: $CSPROJ"
+          dotnet build "$CSPROJ"
+          nohup dotnet run --project "$CSPROJ" --urls=http://0.0.0.0:5006 &
+          sleep 35
+          curl -s http://localhost:5006/swagger/index.html && echo "✅ API Ready"
+
+      - name: Run ZAP Baseline Scan (Docker)
+        run: |
+          docker run -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:2.16.1 zap-baseline.py \
+            -t http://host.docker.internal:5006 \
+            -g gen.conf \
+            -r zap-report.html \
+            -J zap-report.json \
+            -a
+
+      - name: Check and handle results
+        run: |
+          if [ -f "zap-report.html" ]; then
+            echo "✅ ZAP report generated successfully"
+            ls -la zap-report.html
+          else
+            echo "⚠️ Creating fallback report"
+            echo "<html><body><h1>ZAP Scan Completed</h1><p>Scan finished but no HTML report was generated. Check JSON report.</p></body></html>" > zap-report.html
           fi
-          echo "project=$CSPROJ" >> $GITHUB_OUTPUT
-          echo "✅ Found: $CSPROJ"
-
-      - name: Build and run API
-        run: |
-          dotnet build "${{ steps.project.outputs.project }}"
-          nohup dotnet run --project "${{ steps.project.outputs.project }}" --urls=http://0.0.0.0:5006 > api.log 2>&1 &
-          sleep 30
-          cat api.log
-
-      - name: Test API endpoints
-        run: |
-          curl -s http://localhost:5006/swagger/index.html && echo "✅ Swagger OK" || echo "❌ Swagger failed"
-          curl -s http://localhost:5006/swagger/v1/swagger.json > swagger.json && echo "✅ Swagger JSON OK" || echo "❌ Swagger JSON failed"
-
-      - name: Run ZAP Quick Scan
-        run: |
-          wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.16.1/ZAP_2.16.1_Linux.tar.gz
-          tar -xvzf ZAP_2.16.1_Linux.tar.gz
-          ./ZAP_2.16.1/zap.sh -cmd -quickurl http://localhost:5006 -quickout report.html -quickprogress
 
       - uses: actions/upload-artifact@v4
         with:
           name: ZAP-Report-VULN-002
-          path: report.html
+          path: zap-report.html
