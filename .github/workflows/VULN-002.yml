@@ -1,4 +1,4 @@
-name: VULN-002 - Sensitive Data Exposure
+name: VULN-002 - Sensitive Data Exposure (Simplified)
 
 on:
   workflow_dispatch:
@@ -14,146 +14,36 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Find and list .csproj files
+      - name: Find project file
+        id: project
         run: |
-          echo "🔍 Buscando proyectos .NET..."
-          find . -name "*.csproj" -type f | head -10
-          echo "=== ESTRUCTURA DEL REPOSITORIO ==="
-          ls -la
-
-      - name: Find main project file
-        id: find_project
-        run: |
-          # Buscar el archivo .csproj principal
-          if [ -f "FarmaciaChavarria.csproj" ]; then
-            echo "project_path=FarmaciaChavarria.csproj" >> $GITHUB_OUTPUT
-          elif [ -f "FarmaciaChavarria.API.csproj" ]; then
-            echo "project_path=FarmaciaChavarria.API.csproj" >> $GITHUB_OUTPUT
-          else
-            # Buscar cualquier .csproj
-            CSPROJ_FILE=$(find . -name "*.csproj" -type f | head -1)
-            if [ -n "$CSPROJ_FILE" ]; then
-              echo "project_path=$CSPROJ_FILE" >> $GITHUB_OUTPUT
-            else
-              echo "❌ No se encontró ningún archivo .csproj"
-              exit 1
-            fi
-          fi
-          echo "✅ Proyecto encontrado: ${{ steps.find_project.outputs.project_path }}"
-
-      - name: Restore and build project
-        run: |
-          echo "📦 Compilando proyecto: ${{ steps.find_project.outputs.project_path }}"
-          dotnet restore "${{ steps.find_project.outputs.project_path }}"
-          dotnet build "${{ steps.find_project.outputs.project_path }}" --configuration Release --no-restore
-
-      - name: Start API with specific project
-        run: |
-          echo "🚀 Iniciando API..."
-          dotnet run --project "${{ steps.find_project.outputs.project_path }}" --urls=http://0.0.0.0:5006 &
-          API_PID=$!
-          echo "API_PID=$API_PID" >> $GITHUB_ENV
-          
-          echo "⏳ Esperando a que la API esté lista..."
-          # Espera más inteligente con timeout
-          for i in {1..15}; do
-            if curl -f http://localhost:5006/swagger/index.html > /dev/null 2>&1; then
-              echo "✅ API está respondiendo correctamente"
-              break
-            fi
-            echo "⏳ Intento $i/15 - Esperando API..."
-            sleep 3
-          done
-          
-          # Verificación final
-          if curl -f http://localhost:5006/swagger/index.html; then
-            echo "🎉 API lista para escanear"
-          else
-            echo "❌ API no responde después de 45 segundos"
-            # Forzar cierre y salir
-            kill $API_PID 2>/dev/null || true
+          CSPROJ=$(find . -name "*.csproj" | head -1)
+          if [ -z "$CSPROJ" ]; then
+            echo "❌ No .csproj found"
             exit 1
           fi
+          echo "project=$CSPROJ" >> $GITHUB_OUTPUT
+          echo "✅ Found: $CSPROJ"
 
-      - name: Download ZAP
+      - name: Build and run API
+        run: |
+          dotnet build "${{ steps.project.outputs.project }}"
+          nohup dotnet run --project "${{ steps.project.outputs.project }}" --urls=http://0.0.0.0:5006 > api.log 2>&1 &
+          sleep 30
+          cat api.log
+
+      - name: Test API endpoints
+        run: |
+          curl -s http://localhost:5006/swagger/index.html && echo "✅ Swagger OK" || echo "❌ Swagger failed"
+          curl -s http://localhost:5006/swagger/v1/swagger.json > swagger.json && echo "✅ Swagger JSON OK" || echo "❌ Swagger JSON failed"
+
+      - name: Run ZAP Quick Scan
         run: |
           wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.16.1/ZAP_2.16.1_Linux.tar.gz
           tar -xvzf ZAP_2.16.1_Linux.tar.gz
-          echo "✅ ZAP descargado y extraído"
+          ./ZAP_2.16.1/zap.sh -cmd -quickurl http://localhost:5006 -quickout report.html -quickprogress
 
-      - name: Create targeted scan config
-        run: |
-          cat > sensitive-scan.yaml << 'EOF'
-          env:
-            contexts:
-            - name: "FarmaciaChavarria-API"
-              urls:
-              - http://localhost:5006
-          jobs:
-          - type: "openapi"
-            parameters:
-              targetUrl: "http://localhost:5006/swagger/v1/swagger.json"
-              context: "FarmaciaChavarria-API"
-            name: "Importar desde Swagger"
-          - type: "spider"
-            parameters:
-              context: "FarmaciaChavarria-API"
-              maxDuration: 10
-            name: "Spider Básico"
-          - type: "activeScan"
-            parameters:
-              context: "FarmaciaChavarria-API"
-              maxRuleDurationInMins: 3
-            name: "Escaneo Activo"
-          - type: "report"
-            parameters:
-              template: "traditional-html"
-              reportFile: "/github/workspace/report-sensitive.html"
-              reportTitle: "VULN-002 - Sensitive Data Exposure"
-          EOF
-
-      - name: Run ZAP Scan
-        run: |
-          echo "🔍 Iniciando escaneo ZAP..."
-          timeout 600 ./ZAP_2.16.1/zap.sh -cmd -autorun sensitive-scan.yaml
-          echo "✅ Escaneo ZAP completado"
-
-      - name: Verify and create fallback report if needed
-        run: |
-          if [ -f "report-sensitive.html" ] && [ -s "report-sensitive.html" ]; then
-            echo "✅ Reporte generado exitosamente"
-            echo "Tamaño del reporte: $(wc -l < report-sensitive.html) líneas"
-          else
-            echo "⚠️ No se generó reporte, creando fallback..."
-            cat > report-sensitive.html << 'EOF'
-            <html>
-            <head><title>ZAP Scan Report - VULN-002</title></head>
-            <body>
-              <h1>ZAP Security Scan Report</h1>
-              <h2>VULN-002 - Sensitive Data Exposure</h2>
-              <p><strong>Status:</strong> Scan completed but no vulnerabilities found or API not fully accessible</p>
-              <p><strong>API URL:</strong> http://localhost:5006</p>
-              <p><strong>Recommendations:</strong></p>
-              <ul>
-                <li>Verify API endpoints are accessible</li>
-                <li>Check Swagger/OpenAPI documentation availability</li>
-                <li>Ensure proper authentication mechanisms</li>
-                <li>Implement data encryption for sensitive information</li>
-              </ul>
-            </body>
-            </html>
-            EOF
-          fi
-
-      - name: Upload ZAP Report
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: ZAP-Report-VULN-002-Sensitive
-          path: report-sensitive.html
-
-      - name: Stop API process
-        if: always()
-        run: |
-          echo "🛑 Deteniendo API..."
-          pkill -f "dotnet run" || true
-          sleep 5
+          name: ZAP-Report-VULN-002
+          path: report.html
