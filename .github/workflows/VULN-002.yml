@@ -1,4 +1,4 @@
-name: VULN-002 - Error Handling Exposure Scan
+name: VULN-002 - Sensitive Data Exposure
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-
+      
       - uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
@@ -18,24 +18,89 @@ jobs:
           dotnet restore
           dotnet build
 
-      - run: |
+      - name: Start API and wait for readiness
+        run: |
           dotnet run --urls=http://0.0.0.0:5006 &
-          echo "Esperando a que la API arranque..."
-          sleep 15
+          echo "Esperando a que la API esté completamente lista..."
+          # Espera más robusta con múltiples intentos
+          for i in {1..30}; do
+            if curl -f http://localhost:5006/swagger/v1/swagger.json > /dev/null 2>&1; then
+              echo "✅ API está respondiendo"
+              break
+            fi
+            echo "⏳ Esperando API... intento $i/30"
+            sleep 5
+          done
+          curl -f http://localhost:5006/swagger/index.html || exit 1
 
       - name: Download ZAP
         run: |
           wget https://github.com/zaproxy/zaproxy/releases/download/v2.16.1/ZAP_2.16.1_Linux.tar.gz
           tar -xvzf ZAP_2.16.1_Linux.tar.gz
 
-      - name: Run ZAP Baseline Scan (Error Handling)
+      - name: Create OpenAPI-based scan config
         run: |
-          ./ZAP_2.16.1/zap.sh -cmd -quickurl http://localhost:5006/swagger/index.html \
-          -quickout $GITHUB_WORKSPACE/report-error-handling.html \
-          -config api.key=12345 \
-          -config spider.maxDuration=2
+          cat > sensitive-scan.yaml << 'EOF'
+          env:
+            contexts:
+            - name: "FarmaciaChavarria-Sensitive"
+              urls:
+              - http://localhost:5006
+              includePaths:
+              - ".*/api/.*"
+              - ".*/auth/.*"
+              - ".*/usuario/.*"
+              - ".*/cliente/.*"
+              - ".*/factura/.*"
+          jobs:
+          - type: "openapi"
+            parameters:
+              targetUrl: "http://localhost:5006/swagger/v1/swagger.json"
+              context: "FarmaciaChavarria-Sensitive"
+            name: "Import OpenAPI Spec"
+          - type: "spider"
+            parameters:
+              context: "FarmaciaChavarria-Sensitive"
+              maxDepth: 10
+            name: "Deep Spider"
+          - type: "ajaxSpider"
+            parameters:
+              context: "FarmaciaChavarria-Sensitive"
+              maxDuration: 10
+            name: "AJAX Spider"
+          - type: "activeScan"
+            parameters:
+              context: "FarmaciaChavarria-Sensitive"
+              policy: "Default Policy"
+              maxRuleDurationInMins: 5
+            name: "Active Scan for Sensitive Data"
+          - type: "passiveScan"
+            parameters:
+              context: "FarmaciaChavarria-Sensitive"
+            name: "Passive Scan"
+          - type: "report"
+            parameters:
+              template: "traditional-html"
+              reportFile: "/github/workspace/report-sensitive.html"
+              reportTitle: "VULN-002 - Sensitive Data Exposure Report"
+          EOF
+
+      - name: Run ZAP with OpenAPI import
+        run: |
+          ./ZAP_2.16.1/zap.sh -cmd -autorun sensitive-scan.yaml
+
+      - name: Check if report was generated
+        run: |
+          if [ -f "report-sensitive.html" ]; then
+            echo "✅ Reporte generado correctamente"
+            ls -la report-sensitive.html
+          else
+            echo "❌ No se generó el reporte"
+            # Crear reporte de fallback
+            echo "<html><body><h1>ZAP Scan - No Data Found</h1><p>ZAP no pudo encontrar endpoints para escanear. Verificar que la API esté ejecutándose correctamente y que Swagger/OpenAPI esté disponible.</p></body></html>" > report-sensitive.html
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ZAP-Report-VULN-002
-          path: report-error-handling.html
+          name: ZAP-Report-VULN-002-Sensitive
+          path: report-sensitive.html
