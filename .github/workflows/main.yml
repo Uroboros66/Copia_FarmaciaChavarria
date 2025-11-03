@@ -1,0 +1,40 @@
+name: ZAP - Scan VULN-001 - Auth brute-force detection
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  zap-scan-auth:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: ${{ secrets.TARGET_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run OWASP ZAP baseline scan (auth endpoints)
+        run: |
+          docker run --rm -v $(pwd):/zap/wrk/:Z owasp/zap2docker-stable \
+            zap-baseline.py -t "${TARGET}/api/auth/login" -r zap-auth-report.html -J zap-auth-report.json -I -d
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-auth-report
+          path: |
+            zap-auth-report.html
+            zap-auth-report.json
+
+      - name: Check for high-risk auth alerts (fail if present)
+        run: |
+          if [ ! -f zap-auth-report.json ]; then echo "No report found"; exit 1; fi
+          # buscar alertas relevantes a autenticación (High risk)
+          jq -r '.site[]?.alerts[]? | select(.risk == "High" and (.name|test("Brute force|Authentication|SQL Injection|Missing authorisation")) ) | .name' zap-auth-report.json > auth_issues.txt || true
+          if [ -s auth_issues.txt ]; then
+            echo "Encontradas alertas críticas relacionadas con autenticación:"
+            cat auth_issues.txt
+            exit 1
+          else
+            echo "No se encontraron alertas High relacionadas con autenticación."
+          fi
