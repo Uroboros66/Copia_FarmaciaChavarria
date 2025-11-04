@@ -1,0 +1,121 @@
+name: VULN-001 - Authentication Check
+on:
+  workflow_dispatch:
+
+jobs:
+  auth-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup screenshot tool
+        run: |
+          echo "📸 Instalando herramientas para capturas..."
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          pip3 install selenium
+          sudo apt-get install -y chromium-browser
+
+      - name: Find unprotected endpoints and take screenshots
+        run: |
+          echo "🔍 Buscando endpoints sin protección y tomando capturas..."
+          
+          mkdir -p screenshots
+          
+          # 1. Buscar controllers sin [Authorize] y guardar resultado
+          echo "CONTROLLERS SIN PROTECCIÓN:" > unprotected.txt
+          find . -name "*Controller.cs" -type f | xargs grep -L "Authorize" >> unprotected.txt
+          
+          # 2. Tomar captura del archivo de resultados
+          python3 -c "
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          
+          options = Options()
+          options.add_argument('--headless')
+          options.add_argument('--no-sandbox')
+          options.add_argument('--disable-dev-shm-usage')
+          
+          driver = webdriver.Chrome(options=options)
+          driver.set_window_size(1200, 800)
+          
+          # Crear página HTML con los resultados
+          with open('unprotected.txt', 'r') as f:
+              content = f.read()
+          
+          html_content = f'''
+          <html>
+          <head><title>VULN-001 - Controllers Sin Protección</title></head>
+          <body>
+          <h1>VULN-001 - Endpoints Sin Autenticación</h1>
+          <div style="background: #f0f0f0; padding: 20px; border-radius: 10px;">
+          <h2>Controllers Sin [Authorize]:</h2>
+          <pre style="background: white; padding: 15px; border: 1px solid #ccc;">{content}</pre>
+          </div>
+          <p><strong>Impacto:</strong> Acceso no autorizado a datos sensibles</p>
+          <p><strong>Nivel de Riesgo:</strong> Crítico</p>
+          </body>
+          </html>
+          '''
+          
+          with open('result.html', 'w') as f:
+              f.write(html_content)
+          
+          driver.get('file://' + '/home/runner/work/_temp/result.html')
+          driver.save_screenshot('screenshots/vuln-001-controllers.png')
+          driver.quit()
+          "
+          
+          # 3. Capturar código específico de controllers
+          echo "=== CÓDIGO DE CONTROLLERS VULNERABLES ===" > code_examples.txt
+          find . -name "*Controller.cs" -type f | xargs grep -L "Authorize" | head -2 | while read file; do
+            echo "ARCHIVO: $file" >> code_examples.txt
+            head -20 "$file" >> code_examples.txt
+            echo "---" >> code_examples.txt
+          done
+          
+          # 4. Captura del código vulnerable
+          python3 -c "
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          
+          options = Options()
+          options.add_argument('--headless')
+          options.add_argument('--no-sandbox')
+          options.add_argument('--disable-dev-shm-usage')
+          
+          driver = webdriver.Chrome(options=options)
+          driver.set_window_size(1200, 600)
+          
+          with open('code_examples.txt', 'r') as f:
+              code_content = f.read()
+          
+          html_code = f'''
+          <html>
+          <head><title>VULN-001 - Código Vulnerable</title></head>
+          <body>
+          <h1>VULN-001 - Código Sin Autenticación</h1>
+          <div style="background: #fff0f0; padding: 15px; border-left: 5px solid red;">
+          <h3>🔴 Código Vulnerable Identificado:</h3>
+          <pre style="background: #f8f8f8; padding: 10px; border: 1px solid #ddd; font-size: 12px;">{code_content}</pre>
+          </div>
+          </body>
+          </html>
+          '''
+          
+          with open('code_result.html', 'w') as f:
+              f.write(html_code)
+          
+          driver.get('file://' + '/home/runner/work/_temp/code_result.html')
+          driver.save_screenshot('screenshots/vuln-001-codigo.png')
+          driver.quit()
+          "
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-001-screenshots
+          path: screenshots/
+          retention-days: 30
