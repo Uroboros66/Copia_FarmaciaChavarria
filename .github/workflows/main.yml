@@ -14,9 +14,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run OWASP ZAP baseline scan (auth endpoints)
-        run: |
-          docker run --rm -v $(pwd):/zap/wrk/:Z owasp/zap2docker-stable \
-            zap-baseline.py -t "${TARGET}/api/auth/login" -r zap-auth-report.html -J zap-auth-report.json -I -d
+        uses: zaproxy/action-baseline@v0.11.0
+        with:
+          target: ${{ env.TARGET }}/api/auth/login
+          cmd_options: '-I -r zap-auth-report.html -J zap-auth-report.json -d'
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
