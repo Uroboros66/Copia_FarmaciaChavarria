@@ -1,0 +1,59 @@
+name: VULN-005 - Swagger Security Check
+on:
+  workflow_dispatch:
+
+jobs:
+  swagger-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check Swagger configuration
+        run: |
+          echo "🔍 Revisando configuración de Swagger..."
+          
+          # Buscar configuración de Swagger
+          echo "=== Configuración de Swagger ==="
+          find . -name "*.cs" -type f | xargs grep -l "AddSwaggerGen\|Swashbuckle" | head -5
+          
+          # Verificar entorno de Swagger
+          echo "=== Restricciones por entorno ==="
+          if find . -name "*.cs" -type f | xargs grep -B5 -A5 "AddSwaggerGen" | grep -E "IsDevelopment\|Environment.Development" | head -5; then
+            echo "✅ Swagger parece restringido a desarrollo"
+          else
+            echo "⚠️ Swagger puede estar habilitado en producción"
+          fi
+          
+          # Verificar autenticación en Swagger
+          echo "=== Autenticación en Swagger ==="
+          if find . -name "*.cs" -type f | xargs grep -B5 -A5 "AddSwaggerGen" | grep -E "AddSecurityDefinition\|Authorization" | head -5; then
+            echo "✅ Swagger tiene configuración de seguridad"
+          else
+            echo "⚠️ Swagger no tiene autenticación configurada"
+          fi
+
+      - name: Generate swagger report
+        run: |
+          cat > vuln-005-report.md << 'EOF'
+          # VULN-005 - Swagger Security Report
+          
+          ## Hallazgos
+          - Revisión de configuración de Swagger
+          - Verificación de restricciones por entorno
+          - Análisis de autenticación en Swagger UI
+          
+          ## Recomendaciones
+          1. Restringir Swagger solo a entorno de desarrollo
+          2. Implementar autenticación básica para Swagger
+          3. Deshabilitar Swagger en producción
+          
+          **Estado**: Revisión básica completada
+          EOF
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-005-swagger
+          path: vuln-005-report.md
