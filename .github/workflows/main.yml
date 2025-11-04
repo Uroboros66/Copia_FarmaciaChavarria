@@ -7,76 +7,53 @@ on:
   workflow_dispatch:
 
 jobs:
-  scan:
+  zap-jwt-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
-      - name: 📥 Checkout
+      - name: 📥 Checkout del código
         uses: actions/checkout@v4
 
-      - name: 🛠️ Setup .NET
+      - name: 🛠️ Configurar .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: 🔧 Restore & Build API
+      - name: ⚙️ Compilar y ejecutar API
         run: |
           cd API_FarmaciaChavarria
           dotnet restore
           dotnet build --no-restore -c Release
-
-      - name: 🚀 Run API in background
-        run: |
-          cd API_FarmaciaChavarria
-          nohup dotnet run --urls "http://0.0.0.0:5000" > ../zap_api.log 2>&1 &
-          echo "Esperando que la API arranque..."
-          for i in {1..25}; do
-            if curl -sSf http://localhost:5000/ >/dev/null 2>&1; then
-              echo "API disponible"
+          nohup dotnet run --urls "http://0.0.0.0:5000" > ../api.log 2>&1 &
+          echo "Esperando que la API esté disponible..."
+          for i in {1..30}; do
+            if curl -sSf http://localhost:5000 >/dev/null 2>&1; then
+              echo "✅ API activa en localhost:5000"
               break
             fi
             sleep 2
           done
 
-      - name: 🧪 OWASP ZAP - Baseline Scan
-        uses: zaproxy/action-baseline@v0.6.0
+      - name: 🧪 Ejecutar escaneo OWASP ZAP
+        uses: zaproxy/action-baseline@v0.8.0
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           target: 'http://localhost:5000'
-          format: 'html'
-          output: 'zap_report_jwt.html'
-          cmd_options: '-a'
-          failOnRisk: false
+          docker_name: 'ghcr.io/zaproxy/zap-stable'
+          cmd_options: '-a -r zap_report_jwt.html'
 
-      - name: 📤 Upload ZAP HTML report
+      - name: 📤 Subir reporte de ZAP
         uses: actions/upload-artifact@v4
         with:
           name: zap-report-jwt
           path: zap_report_jwt.html
 
-      - name: 🧾 OWASP ZAP - SARIF Report (optional)
-        uses: zaproxy/action-baseline@v0.6.0
-        with:
-          target: 'http://localhost:5000'
-          format: 'sarif'
-          output: 'zap_report_jwt.sarif'
-          failOnRisk: false
-
-      - name: 📤 Upload SARIF to Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: zap_report_jwt.sarif
-
-      - name: 🔍 Static check for hardcoded JWT key
+      - name: 🔍 Buscar clave JWT hardcoded
         run: |
           echo "Buscando JWT hardcoded en appsettings.json..."
-          if grep -q '"Jwt":' API_FarmaciaChavarria/appsettings.json; then
-            echo "Bloque JWT encontrado."
-          fi
-
           if grep -q 'MiClaveChavarriaSecretaFarmacia2022' API_FarmaciaChavarria/appsettings.json; then
             echo "::error file=API_FarmaciaChavarria/appsettings.json,line=1::Hardcoded JWT key detected (VULN-001)"
             exit 1
           else
-            echo "✅ No se detectó clave JWT hardcoded."
+            echo "✅ No se detectaron claves JWT hardcoded."
           fi
