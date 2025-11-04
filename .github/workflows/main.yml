@@ -7,8 +7,6 @@ on:
 jobs:
   zap-scan-auth:
     runs-on: ubuntu-latest
-    env:
-      TARGET: ${{ secrets.TARGET_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,7 +14,7 @@ jobs:
       - name: Run OWASP ZAP baseline scan (auth endpoints)
         uses: zaproxy/action-baseline@v0.11.0
         with:
-          target: ${{ env.TARGET }}/api/auth/login
+          target: ${{ secrets.TARGET_URL }}/api/auth/login
           cmd_options: '-I -r zap-auth-report.html -J zap-auth-report.json -d'
 
       - name: Upload report artifact
