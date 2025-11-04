@@ -1,56 +1,82 @@
 name: VULN-001 - Detect JWT hardcoded
+
 on:
   push:
     paths:
       - 'API_FarmaciaChavarria/**'
+  workflow_dispatch:
+
 jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Setup .NET
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore & Build
+      - name: 🔧 Restore & Build API
         run: |
-          cd API_FarmaciaChavarr ia || cd API_FarmaciaChavarria
+          cd API_FarmaciaChavarria
           dotnet restore
           dotnet build --no-restore -c Release
 
-      - name: Run API in background
+      - name: 🚀 Run API in background
         run: |
           cd API_FarmaciaChavarria
-          nohup dotnet run --urls "http://0.0.0.0:5000" &> zap_api.log &
-          # wait for server to start
-          for i in {1..20}; do
-            if curl -sS http://localhost:5000/ >/dev/null; then break; fi
-            sleep 1
+          nohup dotnet run --urls "http://0.0.0.0:5000" > ../zap_api.log 2>&1 &
+          echo "Esperando que la API arranque..."
+          for i in {1..25}; do
+            if curl -sSf http://localhost:5000/ >/dev/null 2>&1; then
+              echo "API disponible"
+              break
+            fi
+            sleep 2
           done
 
-      - name: OWASP ZAP - Baseline scan
+      - name: 🧪 OWASP ZAP - Baseline Scan
         uses: zaproxy/action-baseline@v0.6.0
         with:
           target: 'http://localhost:5000'
           format: 'html'
           output: 'zap_report_jwt.html'
-          failOnRisk: 'false'
+          cmd_options: '-a'
+          failOnRisk: false
 
-      - name: Upload ZAP report (HTML)
+      - name: 📤 Upload ZAP HTML report
         uses: actions/upload-artifact@v4
         with:
           name: zap-report-jwt
           path: zap_report_jwt.html
 
-      - name: Static check - grep JWT key in appsettings.json
+      - name: 🧾 OWASP ZAP - SARIF Report (optional)
+        uses: zaproxy/action-baseline@v0.6.0
+        with:
+          target: 'http://localhost:5000'
+          format: 'sarif'
+          output: 'zap_report_jwt.sarif'
+          failOnRisk: false
+
+      - name: 📤 Upload SARIF to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: zap_report_jwt.sarif
+
+      - name: 🔍 Static check for hardcoded JWT key
         run: |
-          if grep -R --line-number '"Jwt":' -n API_FarmaciaChavarria/appsettings.json; then
-              echo "Found Jwt config in appsettings.json"
+          echo "Buscando JWT hardcoded en appsettings.json..."
+          if grep -q '"Jwt":' API_FarmaciaChavarria/appsettings.json; then
+            echo "Bloque JWT encontrado."
           fi
-          if grep -R --line-number 'MiClaveChavarriaSecretaFarmacia2022' API_FarmaciaChavarria || true; then
-              echo "::error file=API_FarmaciaChavarria/appsettings.json::Hardcoded JWT key detected (VULN-001)"
-              exit 1
+
+          if grep -q 'MiClaveChavarriaSecretaFarmacia2022' API_FarmaciaChavarria/appsettings.json; then
+            echo "::error file=API_FarmaciaChavarria/appsettings.json,line=1::Hardcoded JWT key detected (VULN-001)"
+            exit 1
+          else
+            echo "✅ No se detectó clave JWT hardcoded."
           fi
