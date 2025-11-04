@@ -1,0 +1,58 @@
+name: VULN-003 - Rate Limiting Check
+on:
+  workflow_dispatch:
+
+jobs:
+  rate-limit-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check authentication endpoints
+        run: |
+          echo "🔍 Revisando protección contra fuerza bruta..."
+          
+          # Buscar endpoints de login
+          echo "=== Endpoints de autenticación ==="
+          find . -name "*.cs" -type f | xargs grep -l "login\|Login\|auth\|Auth" | grep -v "Test" | head -10
+          
+          # Verificar rate limiting
+          echo "=== Rate Limiting implementado ==="
+          if find . -name "*.cs" -type f | xargs grep -l "RateLimit\|Throttle" | head -5; then
+            echo "✅ Se encontró rate limiting"
+          else
+            echo "⚠️ No se encontró implementación de rate limiting"
+          fi
+          
+          # Verificar lockout policies
+          echo "=== Políticas de bloqueo ==="
+          if find . -name "*.cs" -type f | xargs grep -l "Lockout\|MaxFailedAttempts" | head -5; then
+            echo "✅ Se encontraron políticas de bloqueo"
+          else
+            echo "⚠️ No se encontraron políticas de bloqueo por intentos fallidos"
+          fi
+
+      - name: Generate rate-limit report
+        run: |
+          cat > vuln-003-report.md << 'EOF'
+          # VULN-003 - Rate Limiting Report
+          
+          ## Hallazgos
+          - Endpoints de autenticación identificados
+          - Verificación de protección contra fuerza bruta
+          
+          ## Recomendaciones
+          1. Implementar AspNetCoreRateLimit
+          2. Configurar lockout después de 5 intentos fallidos
+          3. Agregar delays progresivos
+          
+          **Estado**: Revisión básica completada
+          EOF
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-003-rate-limit
+          path: vuln-003-report.md
