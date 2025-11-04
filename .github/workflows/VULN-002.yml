@@ -1,0 +1,59 @@
+name: VULN-002 - Error Handling Check
+on:
+  workflow_dispatch:
+
+jobs:
+  error-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check error handling
+        run: |
+          echo "🔍 Revisando manejo de errores..."
+          
+          # Buscar excepciones sin manejo
+          echo "=== Excepciones sin try-catch ==="
+          if find . -name "*.cs" -type f | xargs grep -n "throw new" | grep -v "//" | head -10; then
+            echo "📝 Revisar estas excepciones para manejo adecuado"
+          fi
+          
+          # Verificar uso de ExceptionMiddleware
+          echo "=== Middleware de errores ==="
+          if find . -name "*.cs" -type f | xargs grep -l "ExceptionMiddleware\|UseExceptionHandler" | head -5; then
+            echo "✅ Se encontró middleware de errores"
+          else
+            echo "⚠️ No se encontró middleware global de errores"
+          fi
+          
+          # Buscar detalles sensibles en respuestas
+          echo "=== Respuestas con detalles internos ==="
+          if find . -name "*.cs" -type f | xargs grep -n "StackTrace\|InternalServerError" | grep -v "//" | head -5; then
+            echo "⚠️ Posible exposición de detalles internos"
+          fi
+
+      - name: Generate error report
+        run: |
+          cat > vuln-002-report.md << 'EOF'
+          # VULN-002 - Error Handling Report
+          
+          ## Hallazgos
+          - Revisión de excepciones sin manejo
+          - Verificación de middleware de errores
+          - Detección de posibles detalles sensibles
+          
+          ## Recomendaciones
+          1. Implementar ExceptionMiddleware global
+          2. Ocultar stack traces en producción
+          3. Usar respuestas de error genéricas
+          
+          **Estado**: Análisis básico completado
+          EOF
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-002-error-check
+          path: vuln-002-report.md
