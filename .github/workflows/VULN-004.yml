@@ -1,0 +1,59 @@
+name: VULN-004 - Input Validation Check
+on:
+  workflow_dispatch:
+
+jobs:
+  validation-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check input validation
+        run: |
+          echo "🔍 Revisando validación de entradas..."
+          
+          # Buscar DTOs y modelos
+          echo "=== Modelos y DTOs ==="
+          find . -name "*.cs" -type f | xargs grep -l "class.*Dto\|class.*Model" | grep -v "Test" | head -10
+          
+          # Verificar atributos de validación
+          echo "=== Atributos de validación ==="
+          if find . -name "*.cs" -type f | xargs grep -l "Required\|StringLength\|Range\|Validation" | head -10; then
+            echo "✅ Se encontraron validaciones"
+          else
+            echo "⚠️ Pocas validaciones encontradas"
+          fi
+          
+          # Contar validaciones vs modelos
+          echo "=== Estadísticas de validación ==="
+          MODEL_COUNT=$(find . -name "*.cs" -type f | xargs grep -l "class.*Dto\|class.*Model" | grep -v "Test" | wc -l)
+          VALIDATION_COUNT=$(find . -name "*.cs" -type f | xargs grep -c "Required\|StringLength\|Range" | awk -F: '{sum+=$2} END {print sum}')
+          echo "Modelos encontrados: $MODEL_COUNT"
+          echo "Validaciones encontradas: $VALIDATION_COUNT"
+
+      - name: Generate validation report
+        run: |
+          cat > vuln-004-report.md << 'EOF'
+          # VULN-004 - Input Validation Report
+          
+          ## Hallazgos
+          - Revisión de modelos y DTOs
+          - Conteo de atributos de validación
+          - Análisis de cobertura de validación
+          
+          ## Recomendaciones
+          1. Agregar [Required] a campos obligatorios
+          2. Usar [StringLength] para campos de texto
+          3. Implementar [Range] para valores numéricos
+          4. Validar todos los DTOs de entrada
+          
+          **Estado**: Análisis básico completado
+          EOF
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-004-validation
+          path: vuln-004-report.md
